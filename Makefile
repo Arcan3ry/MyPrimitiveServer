@@ -6,8 +6,11 @@ myhttp: httpd.o http_conn.o
 http_conn.o: ./http/http_conn.cpp
 	g++ -c -o http_conn.o ./http/http_conn.cpp
 
-httpd.o: httpd.o
+
+httpd.o: httpd.cpp
 	g++ -c -o httpd.o httpd.cpp
+
+
 
 clean:
 	rm myhttp
