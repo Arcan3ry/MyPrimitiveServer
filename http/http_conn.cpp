@@ -67,7 +67,6 @@ bool http_conn::read_data(){
         }
         m_read_idx += bytes_read;
     }
-    printf("read data: %s\n",m_read_buf);
     return true;
 }
 
@@ -268,7 +267,6 @@ http_conn::HTTP_CODE http_conn::process_read()
     char *text = 0;
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
-        std::cout << "success line_status: " <<line_status<< std::endl;
         text = get_line();
         m_start_line = m_checked_idx;
         switch (m_check_state)
@@ -535,7 +533,6 @@ bool http_conn::get_informatin(){
     else{
         strcpy(m_sex,"female");
     }
-    printf("m_hobbit %s\n",m_hobbit);
     return true;
 }
 
