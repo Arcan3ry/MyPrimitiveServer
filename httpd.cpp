@@ -113,8 +113,8 @@ int main(void)
 	 address.sin_addr.s_addr = htonl(INADDR_ANY);
 	 setnonblocking(pipefd[1]);
 	 addsig(SIGPIPE, SIG_IGN);
-     addsig(SIGALRM, sig_handler, false);
-     addsig(SIGTERM, sig_handler, false);
+	 addsig(SIGALRM, sig_handler, false);
+	 addsig(SIGTERM, sig_handler, false);
 	 int listenfd = socket(PF_INET, SOCK_STREAM, 0);
 	 ret = bind(listenfd, (struct sockaddr*)&address, sizeof(address));
 	 ret = listen(listenfd, 1);
