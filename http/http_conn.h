@@ -168,7 +168,7 @@ private:
 
 
 int setnonblocking(int fd);
-void addfd(int epollfd, int fd, bool one_shot);
+void addfd(int epollfd, int fd, bool one_shot, int TRIGEMODE);
 void removedfd(int epollfd, int fd);
 void modfd(int epollfd, int fd, int ev);
 

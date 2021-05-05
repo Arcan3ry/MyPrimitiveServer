@@ -17,7 +17,7 @@
 
 #define MAX_EVENT_NUMBER 1024
 //#define BUFFER_SIZE 10
-
+int pipefd[2];
 
 void cb_func(int epollfd, client_data* user_data)
 {
@@ -25,7 +25,6 @@ void cb_func(int epollfd, client_data* user_data)
     assert(user_data);
     close(user_data->sockfd);
     http_conn::m_users_count--;
-	//user.close_conn();
 }
 
 void timer_handler(time_heap& heap, int TIMESOLT)
@@ -49,8 +48,45 @@ void sig_handler(int sig)
     //为保证函数的可重入性，保留原来的errno
     int save_errno = errno;
     int msg = sig;
-    printf("errno is: %d\n",errno);
+    
+	send(pipefd[1], (char *)&msg, 1, 0);
     errno = save_errno;
+}
+
+bool dealwithsignal(bool &timeout)
+{
+    int ret = 0;
+    int sig;
+    char signals[1024];
+    ret = recv(pipefd[0], signals, sizeof(signals), 0);
+    if (ret == -1)
+    {
+        return false;
+    }
+    else if (ret == 0)
+    {
+        return false;
+    }
+    else
+    {
+        for (int i = 0; i < ret; ++i)
+        {
+            switch (signals[i])
+            {
+            case SIGALRM:
+            {
+                timeout = true;
+				printf("timeout\n");
+                break;
+            }
+            case SIGTERM:
+            {
+                break;
+            }
+            }
+        }
+    }
+    return true;
 }
 
 int main(void)
@@ -68,30 +104,37 @@ int main(void)
 	 http_conn* users = new http_conn[10];
 	 int ret = 0;
 	 struct sockaddr_in address;
+
+	 ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
+     
 	 bzero(&address, sizeof(address));
 	 address.sin_family = AF_INET;
 	 address.sin_port = htons(port);
 	 address.sin_addr.s_addr = htonl(INADDR_ANY);
-	 
-
+	 setnonblocking(pipefd[1]);
+	 addsig(SIGPIPE, SIG_IGN);
      addsig(SIGALRM, sig_handler, false);
      addsig(SIGTERM, sig_handler, false);
-
 	 int listenfd = socket(PF_INET, SOCK_STREAM, 0);
 	 ret = bind(listenfd, (struct sockaddr*)&address, sizeof(address));
 	 ret = listen(listenfd, 1);
 	 epoll_event events[MAX_EVENT_NUMBER];
 	 int epollfd = epoll_create(5);
-	 addfd(epollfd, listenfd, true);
-	
+	 addfd(epollfd, listenfd, true, 1);
+	 
+	 addfd(epollfd, pipefd[0], true, 1);
+	 
 	 http_conn::m_epollfd = epollfd;
 	 heap.set_epollfd(epollfd);
-	 int TIMESLOT = 30;
+	 int TIMESLOT = 10;
 	 alarm(TIMESLOT);
 	 while(1){
 		 ret = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
 		 if(ret < 0){
-			 break;
+			 if(errno != EINTR)
+			 	break;
+			 else
+			 	printf("EINTR\n");
 		 }
 		 for(int i = 0; i < ret; i++){
 			 int sockfd = events[i].data.fd;
@@ -105,20 +148,23 @@ int main(void)
 				 if(http_conn::m_users_count >= 10){
 					 continue;
 				 }
-				 addfd(epollfd, connfd, true);
+				 addfd(epollfd, connfd, true, 1);
 				 users[connfd].init(connfd, client_address);
 			 	 users_data[connfd].address = client_address;
 				 users_data[connfd].sockfd = connfd;
 
 				 heap_timer *timer = new heap_timer(TIMESLOT * 3);
 				 timer->user_data = &users_data[connfd];
-				 timer->cb_func = cb_func;
+				 timer->cb_func1 = cb_func;
 				 users_data[connfd].timer = timer;
 				 heap.add_timer(timer);
 			 
 			 }
+			 else if(sockfd == pipefd[0] && events[i].events & EPOLLIN){
+				 dealwithsignal(timeout);
+			 }
 			 else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){
-				 cb_func(epollfd, &users_data[sockfd]);
+				 //cb_func(epollfd, &users_data[sockfd]);
 				 heap_timer *timer = users_data[sockfd].timer;
                  if(timer){
 					 heap.del_timer(timer);
@@ -138,8 +184,10 @@ int main(void)
 				 else{
 					 cb_func(epollfd, &users_data[sockfd]);
 					 heap.del_timer(users_data[sockfd].timer);
+					 //users[sockfd].close_conn();
 				 }
 			 }
+			 
 			 else if(events[i].events & EPOLLOUT){//EPOLLOUT 有数据要写
 				 heap_timer *timer = users_data[sockfd].timer;
 				 if(users[sockfd].setIOState(1)){
@@ -167,8 +215,8 @@ int main(void)
 	 /*while(1){
 		 ret = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
 		 if(ret < 0){
-			 printf("epoll failture\n");
-			 break;
+			 if(errno != EINTER)
+			 	break;
 		 }
 		 for(int i = 0; i < ret; i++){
 			 int sockfd = events[i].data.fd;
@@ -193,9 +241,12 @@ int main(void)
 
 				 heap_timer *timer = new heap_timer(TIMESLOT * 3);
 				 timer->user_data = &users_data[connfd];
-				 timer->cb_func = cb_func;
+				 timer->cb_func1 = cb_func;
 				 users_data[connfd].timer = timer;
 				 heap.add_timer(timer);
+			 }
+			 else if(sockfd == pipefd[0] && events[i].events & EPOLLIN){
+				 dealwithsignal(timeout);
 			 }
 			 else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){
 				 cb_func(epollfd ,&users_data[sockfd]);

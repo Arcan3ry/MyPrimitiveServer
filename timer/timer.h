@@ -46,8 +46,8 @@ public:
     //int get_index() const { return m_index; }
 public:
     time_t expire;
-    //typedef std::function<client_data*> cb_func;
-    void (* cb_func)(int, client_data*);
+    std::function<void(int, client_data*)> cb_func1;
+    //void (* cb_func)(int, client_data*);
     client_data* user_data;
 //private:
     int m_index;
@@ -143,7 +143,8 @@ void time_heap::add_timer(heap_timer* timer){
 }
 
 void time_heap::del_timer(heap_timer* timer){
-    timer->cb_func = NULL;
+    timer->cb_func1 = NULL;
+    //timer->cb_func = NULL;
 }
 
 heap_timer* time_heap::top() const{
@@ -172,10 +173,13 @@ void time_heap::tick(){
             break;
         }
         if(tmp->expire > cur){
+            printf("temp->expire: %d\n",static_cast<int>(tmp->expire));
+            printf("cur: %d\n",static_cast<int>(cur));
             break;
         }
-        if(array[0]->cb_func){
-            array[0]->cb_func(m_epollfd, array[0]->user_data);
+        if(array[0]->cb_func1){
+            //array[0]->cb_func(m_epollfd, array[0]->user_data);
+            array[0]->cb_func1(m_epollfd, array[0]->user_data);
         }
         pop_timer();
         tmp = array[0];
