@@ -24,6 +24,7 @@ public:
     threadpool& operator= (const threadpool&) = delete;
     ~threadpool();
     bool append(T *request);
+    bool append(std::shared_ptr<T>& request);
     
 private:
     /*工作线程运行的函数，它不断从工作队列中取出任务并执行之*/
@@ -35,7 +36,8 @@ private:
     unsigned int m_max_requests;         //请求队列中允许的最大请求数
     //pthread_t *m_threads;       //描述线程池的数组，其大小为m_thread_number
     std::vector<std::unique_ptr<thread>> m_threads;//描述线程池的数组，其大小为m_thread_number
-    std::list<T *> m_workqueue; //请求队列
+    //std::list<T *> m_workqueue; //请求队列
+    std::list<std::shared_ptr<T>> m_workqueue; //请求队列
     locker m_queuelocker;       //保护请求队列的互斥锁
     sem m_queuestat;            //是否有任务需要处理
     cond m_queuecond;
@@ -94,7 +96,7 @@ bool threadpool<T>::append(T *request, int state){
     m_queuecond.signal();
     return true;
 }*/
-template <typename T>
+/*template <typename T>
 bool threadpool<T>::append(T *request){
     m_queuelocker.lock();
     if (m_workqueue.size() >= m_max_requests)
@@ -106,7 +108,23 @@ bool threadpool<T>::append(T *request){
     m_queuelocker.unlock();
     m_queuecond.signal();
     return true;
+}*/
+
+template <typename T>
+bool threadpool<T>::append(std::shared_ptr<T>& request){
+    m_queuelocker.lock();
+    if (m_workqueue.size() >= m_max_requests)
+    {
+        m_queuelocker.unlock();
+        return false;
+    }
+    m_workqueue.push_back(request);
+    m_queuelocker.unlock();
+    m_queuecond.signal();
+    return true;
 }
+
+
 template <typename T>
 void *threadpool<T>::worker(void *arg)
 {
@@ -123,13 +141,14 @@ void threadpool<T>::run()
         while(m_workqueue.empty()){
             m_queuecond.wait(m_queuelocker.get());
         }
-        T *request = m_workqueue.front();
+        //T *request = m_workqueue.front();
+        //m_workqueue.pop_front();
+        std::shared_ptr<T> request = m_workqueue.front();
         m_workqueue.pop_front();
         m_queuelocker.unlock();
-        if (!request){
+        if (!request.get()){
             continue;
         }
-        
         request->execute();
         
     }

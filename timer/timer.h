@@ -173,8 +173,6 @@ void time_heap::tick(){
             break;
         }
         if(tmp->expire > cur){
-            printf("temp->expire: %d\n",static_cast<int>(tmp->expire));
-            printf("cur: %d\n",static_cast<int>(cur));
             break;
         }
         if(array[0]->cb_func1){

@@ -19,7 +19,7 @@ void addfd(int epollfd, int fd, bool one_shot, int TRIGEMODE){
         event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
     else
         event.events = EPOLLIN | EPOLLRDHUP;
-    event.events |= one_shot;
+    //event.events |= one_shot;
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
     setnonblocking(fd);
 }
@@ -33,6 +33,7 @@ void modfd(int epollfd, int fd, int ev){
     epoll_event event;
     event.data.fd = fd;
     event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;
+    //event.events = ev | EPOLLONESHOT | EPOLLET;                               
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
@@ -105,7 +106,6 @@ void http_conn::execute(){
     case REACTOR:{
         if(m_io_state == HAVE_DATA_TO_READ && read_data()){
             m_read_ret = process_read();
-            
             modfd(m_epollfd, m_client_sock, EPOLLOUT);
         }
         else if(m_io_state == HAVE_DATA_TO_WRITE && process_write(m_read_ret)){
@@ -354,6 +354,7 @@ bool http_conn::read_once()
         }
         else if (bytes_read == 0)
         {
+            printf("bytes_read is 0\n");
             return false;
         }
         m_read_idx += bytes_read;
