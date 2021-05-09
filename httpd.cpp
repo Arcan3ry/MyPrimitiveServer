@@ -130,7 +130,8 @@ int main(void)
 	 
 	 http_conn::m_epollfd = epollfd;
 	 heap.set_epollfd(epollfd);
-	 int TIMESLOT = 10;
+	 int TIMESLOT = 20;
+	 bool flag = true;
 	 alarm(TIMESLOT);
 	 while(1){
 		 ret = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);

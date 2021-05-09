@@ -19,7 +19,8 @@ void addfd(int epollfd, int fd, bool one_shot, int TRIGEMODE){
         event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
     else
         event.events = EPOLLIN | EPOLLRDHUP;
-    //event.events |= one_shot;
+    if(one_shot)
+        event.events |= EPOLLONESHOT;
     epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
     setnonblocking(fd);
 }
@@ -32,8 +33,7 @@ void removedfd(int epollfd, int fd){
 void modfd(int epollfd, int fd, int ev){
     epoll_event event;
     event.data.fd = fd;
-    event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;
-    //event.events = ev | EPOLLONESHOT | EPOLLET;                               
+    event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;                       
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
@@ -321,21 +321,6 @@ http_conn::HTTP_CODE http_conn::parse_content(char *text)
 }
 
 
-//将内核事件表注册读事件，ET模式，选择开启EPOLLONESHOT
-/*void addfd(int epollfd, int fd, bool one_shot)
-{
-    epoll_event event;
-    event.data.fd = fd;
-
-    event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
-
-    if (one_shot)
-        event.events |= EPOLLONESHOT;
-    epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
-    setnonblocking(fd);
-}*/
-
-
 bool http_conn::read_once()
 {
     if (m_read_idx >= 2048){
@@ -434,7 +419,7 @@ bool http_conn::process_write(HTTP_CODE ret){
         
         if(m_file_stat.st_size != 0){
             if(m_method == GET){
-                strcpy(m_write_buf, "HTTP/1.0 200 OK\r\n");
+                strcpy(m_write_buf, "HTTP/1.1 200 OK\r\n");
 	            strcat(m_write_buf, SERVER_STRING);
 	            strcat(m_write_buf, "Content-Type: text/html\r\n");
                 char file_len[10];
@@ -447,7 +432,7 @@ bool http_conn::process_write(HTTP_CODE ret){
                 m_write_idx = strlen(m_write_buf);
             }
             else{
-                strcpy(m_write_buf, "HTTP/1.0 200 OK\r\n");
+                strcpy(m_write_buf, "HTTP/1.1 200 OK\r\n");
                 strcat(m_write_buf, "Content-Type:text/html\r\n");
                 char file_len[10];
                 char cgi_buf[2048];
