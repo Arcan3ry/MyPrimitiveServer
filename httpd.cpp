@@ -93,7 +93,7 @@ int main(void)
 {
 	 int server_sock = -1;
 	 u_short port = 6379;//默认监听端口号 port 为6379
-	 threadpool<http_conn>* pool = new threadpool<http_conn>(1,5);
+	 threadpool<http_conn>* pool = new threadpool<http_conn>(10,10);
 	 printf("http server_sock is %d\n", server_sock);
 	 printf("http running on port %d\n", port);
 	 static time_heap heap;
@@ -102,8 +102,8 @@ int main(void)
 	 http_conn::m_users_count = 0;
 	 http_conn::m_status = http_conn::REACTOR;
 	 //http_conn* users = new http_conn[10];
-	 std::vector<std::shared_ptr<http_conn>> users(10);
-	 for(int i = 0; i < 10; i++){
+	 std::vector<std::shared_ptr<http_conn>> users(100);
+	 for(int i = 0; i < 100; i++){
 		 users[i] = std::make_shared<http_conn>();
 	 }
 	 int ret = 0;
@@ -122,15 +122,16 @@ int main(void)
 	 int listenfd = socket(PF_INET, SOCK_STREAM, 0);
 	 ret = bind(listenfd, (struct sockaddr*)&address, sizeof(address));
 	 ret = listen(listenfd, 1);
+	 printf("listenfd is %d\n",listenfd);
 	 epoll_event events[MAX_EVENT_NUMBER];
-	 int epollfd = epoll_create(5);
-	 addfd(epollfd, listenfd, true, 1);
+	 int epollfd = epoll_create(10);
+	 addfd(epollfd, listenfd, false, 1);
 	 
-	 addfd(epollfd, pipefd[0], true, 1);
+	 addfd(epollfd, pipefd[0], false, 1);
 	 
 	 http_conn::m_epollfd = epollfd;
 	 heap.set_epollfd(epollfd);
-	 int TIMESLOT = 20;
+	 int TIMESLOT = 5;
 	 bool flag = true;
 	 alarm(TIMESLOT);
 	 while(1){
@@ -147,10 +148,11 @@ int main(void)
 				 struct sockaddr_in client_address;
 				 socklen_t client_addresslength = sizeof(client_address);
 				 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addresslength);
+				 printf("accept connfd: %d\n", connfd);
 				 if(connfd < 0){
 					 continue;
 				 }
-				 if(http_conn::m_users_count >= 10){
+				 if(http_conn::m_users_count >= 100){
 					 continue;
 				 }
 				 addfd(epollfd, connfd, true, 1);
@@ -174,7 +176,7 @@ int main(void)
                  if(timer){
 					 heap.del_timer(timer);
 				 }
-				 if(static_cast<int>(users[sockfd].use_count()) == 1){
+				 if(static_cast<int>(users[sockfd].use_count()) != 0){
 				 	users[sockfd]->close_conn();
 				 }
 			 }
@@ -194,8 +196,8 @@ int main(void)
 						cb_func(epollfd, &users_data[sockfd]);
 					 	heap.del_timer(users_data[sockfd].timer);
 					 }
-					 //cb_func(epollfd, &users_data[sockfd]);
-					 //heap.del_timer(users_data[sockfd].timer);
+					 cb_func(epollfd, &users_data[sockfd]);
+					 heap.del_timer(users_data[sockfd].timer);
 					 //users[sockfd].close_conn();
 				 }
 			 }

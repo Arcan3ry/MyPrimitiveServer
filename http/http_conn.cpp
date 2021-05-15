@@ -33,7 +33,8 @@ void removedfd(int epollfd, int fd){
 void modfd(int epollfd, int fd, int ev){
     epoll_event event;
     event.data.fd = fd;
-    event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;                       
+    event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;
+    //event.events = ev | EPOLLET | EPOLLRDHUP;                       
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
@@ -220,7 +221,7 @@ http_conn::HTTP_CODE http_conn::parse_request_line(char *text)
 
     if (!m_url || m_url[0] != '/')
         return BAD_REQUEST;
-    //当url为/时，显示判断界面
+    //当url为/时，显示测试界面
     if (strlen(m_url) == 1)
         strcat(m_url, "test.html");
     m_check_state = CHECK_STATE_HEADER;
@@ -270,12 +271,14 @@ http_conn::HTTP_CODE http_conn::process_read()
     char *text = 0;
     while ((m_check_state == CHECK_STATE_CONTENT && line_status == LINE_OK) || ((line_status = parse_line()) == LINE_OK))
     {
+        //POST请求的消息体末尾没有\r\n，所以不能仅使用从状态机到line_status来判断是否读取完成
         text = get_line();
         m_start_line = m_checked_idx;
         switch (m_check_state)
         {
         case CHECK_STATE_REQUESTLINE:
         {
+            //请求行
             ret = parse_request_line(text);
             if (ret == BAD_REQUEST)
                 return BAD_REQUEST;
@@ -283,21 +286,24 @@ http_conn::HTTP_CODE http_conn::process_read()
         }
         case CHECK_STATE_HEADER:
         {
+            //请求头
             ret = parse_headers(text);
             if (ret == BAD_REQUEST)
                 return BAD_REQUEST;
             else if (ret == GET_REQUEST)
             {
+                //如果所GET请求，则表示已经完成请求解析，进入请求处理函数
                 return do_request();
             }
             break;
         }
         case CHECK_STATE_CONTENT:
         {
+            //POST特有的解析消息体
             ret = parse_content(text);
             if (ret == GET_REQUEST)
                 return do_request();
-            line_status = LINE_OPEN;
+            line_status = LINE_OPEN;//解析完消息体后，表示请求处理完毕，避免进入while，修改line_status的值
             break;
         }
         default:
