@@ -148,24 +148,20 @@ int main(void)
 				 struct sockaddr_in client_address;
 				 socklen_t client_addresslength = sizeof(client_address);
 				 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addresslength);
-				 printf("accept connfd: %d\n", connfd);
-				 if(connfd < 0){
-					 continue;
-				 }
-				 if(http_conn::m_users_count >= 100){
-					 continue;
-				 }
-				 addfd(epollfd, connfd, true, 1);
-				 users[connfd]->init(connfd, client_address);
-			 	 users_data[connfd].address = client_address;
-				 users_data[connfd].sockfd = connfd;
+				 while(connfd > 0){
+					 printf("connfd is %d\n", connfd);
+					 addfd(epollfd, connfd, true, 1);
+				 	users[connfd]->init(connfd, client_address);
+			 	 	users_data[connfd].address = client_address;
+				 	users_data[connfd].sockfd = connfd;
 
-				 heap_timer *timer = new heap_timer(TIMESLOT * 3);
-				 timer->user_data = &users_data[connfd];
-				 timer->cb_func1 = cb_func;
-				 users_data[connfd].timer = timer;
-				 heap.add_timer(timer);
-			 
+				 	heap_timer *timer = new heap_timer(TIMESLOT * 3);
+				 	timer->user_data = &users_data[connfd];
+				 	timer->cb_func1 = cb_func;
+				 	users_data[connfd].timer = timer;
+				 	heap.add_timer(timer);
+					connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addresslength);
+				 }
 			 }
 			 else if(sockfd == pipefd[0] && events[i].events & EPOLLIN){
 				 dealwithsignal(timeout);
