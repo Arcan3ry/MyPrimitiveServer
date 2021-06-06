@@ -34,8 +34,7 @@ void removedfd(int epollfd, int fd){
 void modfd(int epollfd, int fd, int ev){
     epoll_event event;
     event.data.fd = fd;
-    event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;
-    //event.events = ev | EPOLLET | EPOLLRDHUP;                       
+    event.events = ev | EPOLLONESHOT | EPOLLET | EPOLLRDHUP;                   
     epoll_ctl(epollfd, EPOLL_CTL_MOD, fd, &event);
 }
 
@@ -107,12 +106,10 @@ void http_conn::execute(){
     {
     case REACTOR:{
         if(m_io_state == HAVE_DATA_TO_READ && read_data()){
-            printf("read data\n");
             m_read_ret = process_read();
             modfd(m_epollfd, m_client_sock, EPOLLOUT);
         }
         else if(m_io_state == HAVE_DATA_TO_WRITE && process_write(m_read_ret)){
-            printf("write\n");
             write();
         }
         break;
@@ -129,7 +126,6 @@ void http_conn::execute(){
 
 void http_conn::init(){
     m_check_state = CHECK_STATE_REQUESTLINE;
-
     m_method = GET;
     m_url = 0;
     m_content_length = 0;

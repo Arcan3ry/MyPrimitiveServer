@@ -26,16 +26,14 @@
 #include <sys/wait.h>
 #include <sys/uio.h>
 #include <map>
+#include <memory>
+#include <list>
 
 #define SERVER_STRING "Server: Ganlupeng's http/0.1.0\r\n"//定义个人server名称
 
 
 class http_conn{
 public:
-    public:
-    static const int FILENAME_LEN = 200;
-    static const int READ_BUFFER_SIZE = 2048;
-    static const int WRITE_BUFFER_SIZE = 2048;
     enum METHOD
     {
         GET = 0,
@@ -82,20 +80,29 @@ public:
         REACTOR = 0,
         PROACTOR
     };
+    static const int FILENAME_LEN = 200;
+    static const int READ_BUFFER_SIZE = 2048;
+    static const int WRITE_BUFFER_SIZE = 2048;
+    static int m_epollfd;
+    static int m_users_count;
+    static STATUS m_status;
+    int timer_flag;
+    int improv;
 
 public:
     http_conn() {}
     ~http_conn() {}
-
-public:
     void init(int sockfd, const sockaddr_in &addr);
     void close_conn(bool real_close = true);
     void process();
     bool read_once();
     bool write();
     bool read_data();
-    int timer_flag;
-    int improv;
+    void *accept_request();
+    void bad_request(int);
+    void execute();
+    void SetSock(const int sock){ m_client_sock = sock;}
+    bool setIOState(int state);
 
 
 private:
@@ -108,31 +115,8 @@ private:
     HTTP_CODE do_request();
     char *get_line() { return m_read_buf + m_start_line; };
     LINE_STATUS parse_line();
-    void unmap();
-    bool add_response(const char *format, ...);
-    bool add_content(const char *content);
-    bool add_status_line(int status, const char *title);
-    bool add_headers(int content_length);
-    bool add_content_type();
-    bool add_content_length(int content_length);
-    bool add_linger();
-    bool add_blank_line();
     bool get_informatin();
 
-
-
-public:
-    void *accept_request();
-    void bad_request(int);
-    void execute();
-    void SetSock(const int sock){ m_client_sock = sock;}
-    bool setIOState(int state);
-
-public:
-    static int m_epollfd;
-    static int m_users_count;
-    static STATUS m_status;
-    
 private:
     int m_start_line;
     int m_client_sock;
@@ -149,10 +133,8 @@ private:
     int m_content_length;
     bool m_linger;
     char *m_host;
-    //char *doc_root;
     char m_real_file[FILENAME_LEN];
     struct stat m_file_stat;
-    //char *m_file_address;
     char m_file_address[2048];
     char* m_string;
     char m_user[256];
