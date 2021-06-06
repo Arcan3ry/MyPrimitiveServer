@@ -5,7 +5,7 @@
 * 使用基于最小堆的定时器处理超时连接
 
 ### 服务器框图
-![enter description here](./images/服务器框图.jpg)
+![avatar](./images/服务器框图.jpg)
 
 ### 参考
 非常感谢
