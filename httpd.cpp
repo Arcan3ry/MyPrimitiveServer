@@ -93,24 +93,25 @@ int main(void)
 {
 	 int server_sock = -1;
 	 u_short port = 6379;//默认监听端口号 port 为6379
-	 threadpool<http_conn>* pool = new threadpool<http_conn>(10,10);
+	 threadpool<http_conn>* pool = new threadpool<http_conn>(10,10);//初始化线程池
 	 printf("http server_sock is %d\n", server_sock);
 	 printf("http running on port %d\n", port);
+
 	 static time_heap heap;
 	 client_data* users_data = new client_data[66536];
 	 bool timeout = false;
 	 http_conn::m_users_count = 0;
 	 http_conn::m_status = http_conn::REACTOR;
-	 //http_conn* users = new http_conn[10];
+	 //http_conn::close_list;
+	 std::list<std::weak_ptr<http_conn>> close_list;
 	 std::vector<std::shared_ptr<http_conn>> users(100);
 	 for(int i = 0; i < 100; i++){
 		 users[i] = std::make_shared<http_conn>();
 	 }
+     //初始化服务器
 	 int ret = 0;
 	 struct sockaddr_in address;
-
 	 ret = socketpair(PF_UNIX, SOCK_STREAM, 0, pipefd);
-     
 	 bzero(&address, sizeof(address));
 	 address.sin_family = AF_INET;
 	 address.sin_port = htons(port);
@@ -125,22 +126,25 @@ int main(void)
 	 printf("listenfd is %d\n",listenfd);
 	 epoll_event events[MAX_EVENT_NUMBER];
 	 int epollfd = epoll_create(10);
-	 addfd(epollfd, listenfd, false, 1);
 	 
+	 //添加监听套接字
+	 addfd(epollfd, listenfd, false, 1);
 	 addfd(epollfd, pipefd[0], false, 1);
 	 
 	 http_conn::m_epollfd = epollfd;
 	 heap.set_epollfd(epollfd);
+
+	 //启动定时
 	 int TIMESLOT = 5;
 	 bool flag = true;
 	 alarm(TIMESLOT);
+
+	 //服务器主线程循环
 	 while(1){
 		 ret = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
 		 if(ret < 0){
-			 if(errno != EINTR)
+			 if(errno != EINTR)//alarm会导致epoll_wait返回EINTR，需要忽略
 			 	break;
-			 else
-			 	printf("EINTR\n");
 		 }
 		 for(int i = 0; i < ret; i++){
 			 int sockfd = events[i].data.fd;
@@ -149,15 +153,17 @@ int main(void)
 				 socklen_t client_addresslength = sizeof(client_address);
 				 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addresslength);
 				 while(connfd > 0){
-					 printf("connfd is %d\n", connfd);
-					 addfd(epollfd, connfd, true, 1);
+					//建立连接并进行初始化
+					printf("connfd is %d\n", connfd);
+					addfd(epollfd, connfd, true, 1);
 				 	users[connfd]->init(connfd, client_address);
 			 	 	users_data[connfd].address = client_address;
 				 	users_data[connfd].sockfd = connfd;
-
+					
+					//为http连接设置定时器
 				 	heap_timer *timer = new heap_timer(TIMESLOT * 3);
 				 	timer->user_data = &users_data[connfd];
-				 	timer->cb_func1 = cb_func;
+				 	timer->cb_func = cb_func;
 				 	users_data[connfd].timer = timer;
 				 	heap.add_timer(timer);
 					connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addresslength);
@@ -173,13 +179,16 @@ int main(void)
 					 heap.del_timer(timer);
 				 }
 				 if(static_cast<int>(users[sockfd].use_count()) != 0){
-				 	users[sockfd]->close_conn();
+				 	 users[sockfd]->close_conn();
+				 }
+				 else{
+					 close_list.emplace_back(users[sockfd]);
 				 }
 			 }
 			 else if(events[i].events & EPOLLIN){//EPOLLIN 有数据要读
 				 heap_timer *timer = users_data[sockfd].timer;
+				 
 				if(users[sockfd]->setIOState(0)){
-					 //pool->append(users + sockfd);
 					 pool->append(users[sockfd]);
 					 if(timer){
 						 time_t cur = time(NULL);
@@ -188,21 +197,21 @@ int main(void)
 					 }
 				 }
 				 else{
+					 if(timer){
+					 	heap.del_timer(timer);
+				 	 }
 					 if(static_cast<int>(users[sockfd].use_count()) == 1){
 						cb_func(epollfd, &users_data[sockfd]);
-					 	heap.del_timer(users_data[sockfd].timer);
 					 }
-					 cb_func(epollfd, &users_data[sockfd]);
-					 heap.del_timer(users_data[sockfd].timer);
-					 //users[sockfd].close_conn();
+					 else{
+						close_list.emplace_back(users[sockfd]);
+				 	}
 				 }
 			 }
 			 
 			 else if(events[i].events & EPOLLOUT){//EPOLLOUT 有数据要写
-				 heap_timer *timer = users_data[sockfd].timer;
-				 //if(users[sockfd].setIOState(1)){
+				heap_timer *timer = users_data[sockfd].timer;
 				if(users[sockfd]->setIOState(1)){
-					 //pool->append(users + sockfd);
 					 pool->append(users[sockfd]);
 					 if(timer){
 						 time_t cur = time(NULL);
@@ -211,12 +220,15 @@ int main(void)
 					 }
 				 }
 				 else{
-					 //users[sockfd].close_conn();
+					 if(timer){
+					  	heap.del_timer(timer);
+				 	 }	
 					 if(static_cast<int>(users[sockfd].use_count()) == 1){
-						printf("close http\n");
 						cb_func(epollfd, &users_data[sockfd]);
-					 	heap.del_timer(users_data[sockfd].timer);
-					 }
+					}
+					 else{
+						 close_list.emplace_back(users[sockfd]);
+				 	}
 					 
 				 }
 			 }
@@ -225,81 +237,20 @@ int main(void)
 			 timer_handler(heap, TIMESLOT);
 			 timeout = false;
 		 }
+		 //利用weak_ptr关闭http连接
+		 for(std::list<std::weak_ptr<http_conn>>::iterator iter = close_list.begin(); iter != close_list.end();){
+			 if(iter->use_count() == 1){
+				if(auto p = iter->lock()){
+					p->close_conn();
+				}
+				close_list.erase(iter++);
+			 }
+			 else{
+				 iter++;
+			 }
+		 }
+
 	 }
-
-	 /** proactor **/
-	 /*while(1){
-		 ret = epoll_wait(epollfd, events, MAX_EVENT_NUMBER, -1);
-		 if(ret < 0){
-			 if(errno != EINTER)
-			 	break;
-		 }
-		 for(int i = 0; i < ret; i++){
-			 int sockfd = events[i].data.fd;
-			 printf("sockfd: %d\n", sockfd);
-			 if(sockfd == listenfd){
-				 struct sockaddr_in client_address;
-				 socklen_t client_addresslength = sizeof(client_address);
-				 int connfd = accept(listenfd, (struct sockaddr*)&client_address, &client_addresslength);
-				 if(connfd < 0){
-					 continue;
-				 }
-				 if(http_conn::m_users_count >= 10){
-					 continue;
-				 }
-				 addfd(epollfd, connfd, true);
-				 users[connfd].init(connfd, client_address);
-
-				 addfd(epollfd, connfd, true);
-				 users[connfd].init(connfd, client_address);
-			 	 users_data[connfd].address = client_address;
-				 users_data[connfd].sockfd = connfd;
-
-				 heap_timer *timer = new heap_timer(TIMESLOT * 3);
-				 timer->user_data = &users_data[connfd];
-				 timer->cb_func1 = cb_func;
-				 users_data[connfd].timer = timer;
-				 heap.add_timer(timer);
-			 }
-			 else if(sockfd == pipefd[0] && events[i].events & EPOLLIN){
-				 dealwithsignal(timeout);
-			 }
-			 else if(events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)){
-				 cb_func(epollfd ,&users_data[sockfd]);
-				 heap_timer *timer = users_data[sockfd].timer;
-				 //users[sockfd].close_conn();
-			 }
-			 else if(events[i].events & EPOLLIN){//EPOLLIN 有数据要读
-			 	 heap_timer *timer = users_data[sockfd].timer;
-				 if(users[sockfd].read_data()){
-					 pool->append(users + sockfd);
-					 if(timer){
-						 time_t cur = time(NULL);
-						 timer->expire = cur + 3 * TIMESLOT;
-						 heap.adjust(timer->m_index);
-					 }
-				 }
-				 else{
-					// users[sockfd].close_conn();
-					cb_func(epollfd ,&users_data[sockfd]);
-				 	heap_timer *timer = users_data[sockfd].timer;
-				 }
-			 }
-			 else if(events[i].events & EPOLLOUT){//EPOLLOUT 有数据要写
-			 	 heap_timer *timer = users_data[sockfd].timer;
-				 if(!users[sockfd].write()){
-					 cb_func(epollfd, &users_data[sockfd]);
-					 heap.del_timer(users_data[sockfd].timer);
-					 //users[sockfd].close_conn();
-		
-				 }
-			 }
-		 } 
-		 if(timeout){
-			 timer_handler(heap, TIMESLOT);
-			 timeout = false;
-		 }
-	 }*/
 	 close(listenfd);
 
 	return(0);
