@@ -34,20 +34,17 @@ private:
 private:
     int m_thread_number;        //线程池中的线程数
     unsigned int m_max_requests;         //请求队列中允许的最大请求数
-    //pthread_t *m_threads;       //描述线程池的数组，其大小为m_thread_number
     std::vector<std::unique_ptr<thread>> m_threads;//描述线程池的数组，其大小为m_thread_number
-    //std::list<T *> m_workqueue; //请求队列
     std::list<std::shared_ptr<T>> m_workqueue; //请求队列
     locker m_queuelocker;       //保护请求队列的互斥锁
     sem m_queuestat;            //是否有任务需要处理
-    cond m_queuecond;
+    cond m_queuecond;           //保护请求队列到条件变量
 };
 template <typename T>
 threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number(thread_number), m_max_requests(max_requests)
 {
     if (thread_number <= 0 || max_requests <= 0)
         throw std::exception();
-   // m_threads = new pthread_t[m_thread_number];
     m_threads.reserve(thread_number);
     if(m_threads.empty()){
         printf("there is not any thread be created\n");
@@ -61,55 +58,12 @@ threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number
             m_threads.pop_back();
         }
     }
-    
-    /*if (!m_threads)
-        throw std::exception();
-    for (int i = 0; i < thread_number; ++i)
-    {
-        if (pthread_create(m_threads + i, NULL, worker, this) != 0)
-        {
-            delete[] m_threads;
-            throw std::exception();
-        }
-        if (pthread_detach(m_threads[i]))
-        {
-            delete[] m_threads;
-            throw std::exception();
-        }
-    }*/
 }
 template <typename T>
 threadpool<T>::~threadpool()
 {
-    //delete[] m_threads;
     m_threads.clear();
 }
-/*template <typename T>
-bool threadpool<T>::append(T *request, int state){
-    m_queuelocker.lock();
-    if (m_workqueue.size() >= m_max_requests){
-        m_queuelocker.unlock();
-        return false;
-    }
-    m_workqueue.push_back(request);
-    m_queuelocker.unlock();
-    m_queuecond.signal();
-    return true;
-}*/
-/*template <typename T>
-bool threadpool<T>::append(T *request){
-    m_queuelocker.lock();
-    if (m_workqueue.size() >= m_max_requests)
-    {
-        m_queuelocker.unlock();
-        return false;
-    }
-    m_workqueue.push_back(request);
-    m_queuelocker.unlock();
-    m_queuecond.signal();
-    return true;
-}*/
-
 template <typename T>
 bool threadpool<T>::append(std::shared_ptr<T>& request){
     m_queuelocker.lock();
@@ -141,8 +95,6 @@ void threadpool<T>::run()
         while(m_workqueue.empty()){
             m_queuecond.wait(m_queuelocker.get());
         }
-        //T *request = m_workqueue.front();
-        //m_workqueue.pop_front();
         std::shared_ptr<T> request = m_workqueue.front();
         m_workqueue.pop_front();
         m_queuelocker.unlock();
@@ -150,7 +102,6 @@ void threadpool<T>::run()
             continue;
         }
         request->execute();
-        
     }
 }
 #endif
