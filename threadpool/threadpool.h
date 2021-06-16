@@ -2,12 +2,11 @@
 #define THREADPOOL_H
 
 #include <list>
-#include <cstdio>
 #include <exception>
-#include <pthread.h>
-#include <iostream>
 #include <vector>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 #include "../lock/locker.h"
 
 class thread{
@@ -39,6 +38,8 @@ private:
     locker m_queuelocker;       //保护请求队列的互斥锁
     sem m_queuestat;            //是否有任务需要处理
     cond m_queuecond;           //保护请求队列到条件变量
+    std::condition_variable cv;
+    std::mutex m_mutex;
 };
 template <typename T>
 threadpool<T>::threadpool(int thread_number, int max_requests) : m_thread_number(thread_number), m_max_requests(max_requests)
@@ -66,7 +67,7 @@ threadpool<T>::~threadpool()
 }
 template <typename T>
 bool threadpool<T>::append(std::shared_ptr<T>& request){
-    m_queuelocker.lock();
+    /*m_queuelocker.lock();
     if (m_workqueue.size() >= m_max_requests)
     {
         m_queuelocker.unlock();
@@ -74,7 +75,12 @@ bool threadpool<T>::append(std::shared_ptr<T>& request){
     }
     m_workqueue.push_back(request);
     m_queuelocker.unlock();
-    m_queuecond.signal();
+    m_queuecond.signal();*/
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (m_workqueue.size() >= m_max_requests)
+        return false;
+    m_workqueue.push_back(request);
+    cv.notify_one();
     return true;
 }
 
@@ -91,13 +97,24 @@ void threadpool<T>::run()
 {
     while (true)
     {
-        m_queuelocker.lock();
+        /*m_queuelocker.lock();
         while(m_workqueue.empty()){
             m_queuecond.wait(m_queuelocker.get());
         }
         std::shared_ptr<T> request = m_workqueue.front();
         m_workqueue.pop_front();
         m_queuelocker.unlock();
+        if (!request.get()){
+            continue;
+        }
+        request->execute();*/
+        std::shared_ptr<T> request;
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            cv.wait(lock, [&](){return !m_workqueue.empty();});
+            request = m_workqueue.front();
+            m_workqueue.pop_front();
+        }
         if (!request.get()){
             continue;
         }
