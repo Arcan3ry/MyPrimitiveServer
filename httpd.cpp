@@ -135,7 +135,7 @@ int main(void)
 	 heap.set_epollfd(epollfd);
 
 	 //启动定时
-	 int TIMESLOT = 5;
+	 int TIMESLOT = 20;
 	 bool flag = true;
 	 alarm(TIMESLOT);
 
